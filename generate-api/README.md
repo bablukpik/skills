@@ -34,8 +34,64 @@ npx skills add bablukpik/skills --skill generate-api --agent cursor claude-code 
 
 Other scopes are documented in [docs/installing.md](../docs/installing.md).
 
-## Example requests
+## How to use this skill
 
-- "Add a REST API for orders with create, list, get, update, and cancel."
-- "Review these endpoints for HTTP semantics, validation, and authorization."
-- "Refactor `/getUsers` and `/createUser` into resource-oriented routes."
+Install from GitHub first. In each agent's prompt box, name `generate-api` and then write the request. Each agent can also load the skill on its own when you ask it to create or change an API.
+
+The one-shot commands below are only for a single terminal run that prints the reply and exits.
+
+### Cursor
+
+In the agent chat box, type `/` and choose `generate-api`, or start the message with `/generate-api`:
+
+```text
+/generate-api Add a REST API for orders with create, list, get, update, and cancel.
+```
+
+**Or in terminal:**
+
+```bash
+agent -p "/generate-api Add a REST API for orders with create, list, get, update, and cancel."
+```
+
+### Claude Code
+
+In the Claude Code prompt, start the message with `/generate-api`:
+
+```text
+/generate-api Create a Python FastAPI endpoint for user registration.
+```
+
+**Or in terminal:**
+
+```bash
+claude -p "/generate-api Create a Python FastAPI endpoint for user registration."
+```
+
+### OpenCode
+
+In the **Ask anything** box, type `@` and choose `generate-api`, or start the message with `@generate-api`:
+
+```text
+@generate-api Create a Go REST endpoint for user registration.
+```
+
+**Or in terminal:**
+
+```bash
+opencode run "@generate-api Create a Go REST endpoint for user registration."
+```
+
+### Codex
+
+In the Codex prompt, type `$` and choose `generate-api`, or start the message with `$generate-api`:
+
+```text
+$generate-api Review these endpoints for HTTP semantics, validation, and authorization.
+```
+
+**Or in terminal:**
+
+```bash
+codex exec '$generate-api Review these endpoints for HTTP semantics, validation, and authorization.'
+```
