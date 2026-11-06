@@ -1,6 +1,6 @@
 ---
 name: generate-api
-description: Design, generate, implement, refactor, and review production-ready APIs using consistent REST principles, HTTP semantics, resource-oriented architecture, validation, security, error handling, pagination, versioning, documentation, and testing. Use whenever creating or modifying API endpoints, controllers, routes, handlers, services, or API contracts.
+description: Design, generate, implement, refactor, and review production-ready APIs using consistent REST principles, HTTP semantics, resource-oriented architecture, validation, security, error handling, pagination, versioning, documentation, and testing. Use whenever creating or modifying API endpoints, controllers, routes, handlers, services, or API contracts. Use this even for a single endpoint or a small API change.
 ---
 
 # generate-api
@@ -14,6 +14,18 @@ Follow established REST architectural principles and HTTP semantics rather than 
 This skill is framework-agnostic and language-agnostic. Adapt its recommendations to the existing project's architecture, technology stack, conventions, and requirements.
 
 Do not introduce unnecessary abstractions, dependencies, or architectural complexity.
+
+### Precedence
+
+Existing project conventions always win. This includes naming, response shapes, error formats, status codes, libraries, and folder structure.
+
+The conventions in this skill are defaults for new projects, new APIs, or areas where the project has no established convention.
+
+Exception: do not copy a project convention that creates a security or correctness problem (for example, returning 2xx for failures or trusting client-provided ownership). Keep the project's style where possible, apply the fix, and flag the issue.
+
+### Scaling the workflow
+
+For small changes to an existing endpoint (a field, a bug fix, a query parameter), match the surrounding code, update the relevant tests, and skip the workflow steps that do not apply. Use the full workflow in Section 14 for new resources and new APIs. For refactors, follow Section 15 instead of the full workflow.
 
 ## 1. Initial Project Inspection
 
@@ -53,7 +65,7 @@ Use nouns to identify resources and HTTP methods to describe operations.
 - POST /deleteUser
 - POST /updateUser
 
-### Naming conventions
+### URL naming
 
 1. Prefer plural nouns for collection resources.
 2. Use lowercase resource names.
@@ -115,6 +127,10 @@ Examples:
 
 Do not assume every PATCH operation is non-idempotent or every POST operation must be non-idempotent. Evaluate the actual operation.
 
+### PATCH style
+
+Unless the project already uses another style, use JSON Merge Patch (`application/merge-patch+json`) for PATCH requests. Document which PATCH style the API uses.
+
 ### Idempotency keys
 
 For operations where duplicate execution is dangerous, especially payments, checkout, orders, and financial transactions, support idempotency keys where appropriate.
@@ -131,9 +147,10 @@ Implementation requirements:
 3. Store the operation's status and result.
 4. Ensure concurrent requests using the same key cannot execute the operation twice.
 5. Return the previously recorded result for legitimate retries.
-6. Reject reuse of the same key with a different request payload.
-7. Define a retention period for idempotency records.
-8. Handle incomplete and failed operations safely.
+6. Reject reuse of the same key with a different request payload (respond with 422).
+7. Respond with 409 Conflict when a request with the same key is still being processed.
+8. Define a retention period for idempotency records.
+9. Handle incomplete and failed operations safely.
 
 Do not confuse idempotency with simply checking whether a resource already exists.
 
@@ -144,7 +161,7 @@ Use meaningful HTTP status codes to communicate operation outcomes.
 ### Success
 
 - 200 OK: Successful request with a response body.
-- 201 Created: A resource was successfully created.
+- 201 Created: A resource was successfully created. Include a `Location` header pointing to the new resource.
 - 202 Accepted: Request accepted for asynchronous processing.
 - 204 No Content: Successful operation without a response body.
 
@@ -157,17 +174,24 @@ Use meaningful HTTP status codes to communicate operation outcomes.
 - 405 Method Not Allowed: HTTP method is unsupported for the resource.
 - 409 Conflict: Conflict with the current resource state.
 - 410 Gone: Resource is permanently unavailable.
+- 412 Precondition Failed: A conditional request failed, such as an `If-Match` header with a stale `ETag`.
 - 413 Content Too Large: Request body exceeds the supported limit.
 - 415 Unsupported Media Type: Unsupported request content type.
 - 422 Unprocessable Content: Request is syntactically valid but fails semantic or business validation.
-- 429 Too Many Requests: Rate limit exceeded.
+- 429 Too Many Requests: Rate limit exceeded. Include a `Retry-After` header when appropriate.
 
 ### Server errors
 
 - 500 Internal Server Error: Unexpected server-side failure.
 - 502 Bad Gateway: Invalid upstream response.
-- 503 Service Unavailable: Service temporarily unavailable.
+- 503 Service Unavailable: Service temporarily unavailable. Include a `Retry-After` header when the recovery time is known.
 - 504 Gateway Timeout: Upstream service timeout.
+
+### Validation errors: 400 vs 422
+
+Use 400 for malformed or unparseable requests. Use 422 for well-formed requests that fail field-level or business validation.
+
+If the project's validation layer already returns 400 for field validation (for example, the default NestJS `ValidationPipe`), keep that behavior and stay consistent rather than mixing the two.
 
 Never return 200 OK for an operation that failed.
 
@@ -179,7 +203,7 @@ Do not expose internal exceptions, stack traces, SQL errors, or infrastructure d
 
 Use a predictable error structure across all endpoints.
 
-Prefer the Problem Details format defined by RFC 9457 where appropriate.
+Prefer the Problem Details format defined by RFC 9457 where appropriate, and return it with the `application/problem+json` content type.
 
 Example:
 
@@ -210,6 +234,9 @@ Requirements:
 6. Log detailed exceptions on the server.
 7. Return appropriate HTTP status codes.
 8. Keep error messages useful without exposing sensitive information.
+9. Ensure the HTTP response status matches the `status` property in the Problem Details body when that property is included.
+
+The standard Problem Details properties (`type`, `title`, `status`, `detail`, and `instance`) must retain their defined names and meanings. The `errors` property in the example is an application-defined extension; document its structure and use it consistently.
 
 Avoid creating a different error structure for every endpoint.
 
@@ -231,6 +258,7 @@ GET /products?page=2&limit=20
 
 - Use query parameters for optional filters.
 - Use consistent naming conventions.
+- Use `page` and `limit` as the standard pagination parameters. Do not mix them with alternatives such as `pageSize` in the same API.
 - Validate filter and sorting parameters.
 - Allowlist sortable fields instead of accepting arbitrary database columns.
 - Apply sensible pagination defaults.
@@ -277,6 +305,8 @@ Use the project's existing validation library.
 
 Separate request DTOs or schemas from database models when appropriate.
 
+Use parameterized database operations and context-specific output encoding where appropriate to prevent injection and cross-site scripting vulnerabilities.
+
 ## 8. Authentication and Authorization
 
 Security must be considered during API design, not added as an afterthought.
@@ -304,11 +334,12 @@ Security must be considered during API design, not added as an afterthought.
 - Apply rate limiting where appropriate.
 - Enforce request body size limits.
 - Use HTTPS in production.
-- Configure CORS intentionally.
+- Configure CORS intentionally. CORS is a browser-enforced cross-origin access policy, not an authentication or authorization mechanism.
 - Protect against injection attacks.
 - Avoid exposing sensitive information in error responses.
 - Use secure pagination and filtering.
 - Apply appropriate security headers.
+- Disable the TRACE method in production.
 
 ## 9. API Versioning and Backward Compatibility
 
@@ -353,7 +384,51 @@ Use ISO 8601 timestamps and UTC for API timestamps unless the domain requires an
 
 Do not mix naming conventions such as camelCase, snake_case, and kebab-case arbitrarily.
 
-Avoid unnecessary response wrappers or inconsistent nesting.
+Response wrapper rule: collection responses use the `{ "data": [], "pagination": {} }` wrapper shown in Section 6, and single-resource responses are returned unwrapped. Avoid any other unnecessary response wrappers or inconsistent nesting.
+
+### Naming conventions
+
+Follow these conventions consistently across the API, subject to the Precedence rule at the top of this skill:
+
+- URL paths: kebab-case, using plural resource names.
+- Query parameters: camelCase.
+- Request body properties: camelCase.
+- Response body properties: camelCase.
+- JSON nested properties: camelCase.
+- Database tables: snake_case.
+- Database columns: snake_case.
+- TypeScript variables and functions: camelCase.
+- TypeScript classes and types: PascalCase.
+- Environment variables: SCREAMING_SNAKE_CASE.
+
+Examples:
+
+GET /order-items?limit=20&sortBy=createdAt
+
+POST /order-items
+
+```json
+{
+  "productId": "prod_123",
+  "quantity": 2
+}
+```
+
+Response:
+
+```json
+{
+  "id": "item_123",
+  "productId": "prod_123",
+  "quantity": 2,
+  "createdAt": "2026-11-05T12:00:00Z"
+}
+```
+
+Use kebab-case for URLs, camelCase for everything in JSON and query parameters, and snake_case for database identifiers.
+
+- Keep API naming conventions independent of database naming conventions.
+- Never mix naming conventions within the same API contract.
 
 ## 11. API Architecture and Implementation
 
@@ -374,7 +449,7 @@ Do not create unnecessary abstraction layers for simple operations.
 
 Use database transactions when multiple related writes must succeed or fail together.
 
-Handle concurrency and race conditions where necessary.
+Handle concurrency and race conditions where necessary. For concurrent updates to the same resource, prefer optimistic concurrency: return an `ETag` (or a version field) and require `If-Match` on updates, responding with 412 Precondition Failed on a mismatch.
 
 Use asynchronous processing and queues for workloads that should not block HTTP requests.
 
@@ -426,6 +501,7 @@ Cover:
 - PATCH behavior matches its documented semantics.
 - Repeated POST requests behave according to their contract.
 - Idempotency key retries do not duplicate operations.
+- Idempotency key reuse with a different payload returns 422, and a concurrent in-flight duplicate returns 409.
 
 ### Security tests
 
@@ -448,7 +524,7 @@ Use the testing framework already established by the project.
 
 ## 14. API Generation Workflow
 
-Whenever generating or modifying an API, follow this workflow:
+Whenever generating or modifying an API, follow this workflow (scaled down for small changes, as described under "Scaling the workflow"):
 
 ### Step 1: Understand requirements
 
@@ -517,7 +593,27 @@ Before considering the API complete, verify:
 - Test coverage.
 - Documentation accuracy.
 
-## 15. Important Rules
+### Reviewing an existing API (separate from the build workflow)
+
+When asked to review an API rather than build one, report findings grouped by severity:
+
+- Critical: security holes, data loss, or broken HTTP semantics (for example, IDOR, unauthenticated access, a GET that mutates state).
+- Important: wrong status codes, inconsistent errors, missing validation, unsafe retries.
+- Minor: naming, documentation, style.
+
+For each finding, give the endpoint or file, the problem, and the concrete fix.
+
+## 15. Refactoring Existing APIs
+
+Refactoring changes internal structure without changing observable behavior. Unless the user explicitly asks for contract changes:
+
+1. Preserve paths, methods, request and response shapes, status codes, and error formats.
+2. Before restructuring, make sure existing behavior is covered by tests. If it isn't, add characterization tests first.
+3. Refactor in small steps and keep the tests passing at each step.
+4. If the current API violates this skill's standards (wrong status codes, GET that mutates state, missing authorization), report it separately. Fix security and correctness bugs when asked, but treat contract-breaking changes as their own decision, following Section 9 (versioning and backward compatibility).
+5. Do not mix refactoring with feature changes in the same step.
+
+## 16. Important Rules
 
 - Never invent custom HTTP semantics when standard semantics are appropriate.
 - Never use GET for state-changing operations.
@@ -543,51 +639,5 @@ Every API generated using this skill should be:
 6. Easy to integrate with frontend and external clients.
 7. Easy to test and document.
 8. Maintainable and extensible.
-
-The ultimate goal is not merely to generate working endpoints.
-
-## Naming Conventions
-
-Follow these conventions consistently across the API:
-
-- URL paths: kebab-case, using plural resource names.
-- Query parameters: camelCase.
-- Request body properties: camelCase.
-- Response body properties: camelCase.
-- JSON nested properties: camelCase.
-- Database tables: snake_case.
-- Database columns: snake_case.
-- TypeScript variables and functions: camelCase.
-- TypeScript classes and types: PascalCase.
-- Environment variables: SCREAMING_SNAKE_CASE.
-
-Examples:
-
-GET /order-items?pageSize=20&sortBy=createdAt
-
-POST /order-items
-
-```json
-{
-  "productId": "prod_123",
-  "quantity": 2
-}
-```
-
-Response:
-
-```json
-{
-  "id": "item_123",
-  "productId": "prod_123",
-  "quantity": 2,
-  "createdAt": "2026-11-05T12:00:00Z"
-}
-```
-
-Use kebab-case for URLs, camelCase for everything in JSON and query parameters, and snake_case for database identifiers.
-
-- Keep API naming conventions independent of database naming conventions.
-- Never mix naming conventions within the same API contract.
 
 **The goal is to generate APIs whose design makes the correct way to use them obvious.**
