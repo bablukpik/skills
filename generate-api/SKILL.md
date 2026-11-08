@@ -101,6 +101,8 @@ Use HTTP methods according to their intended semantics.
 | DELETE  | Delete a resource                           | No   | Yes                       |
 | TRACE   | Diagnostic request                          | Yes  | Yes                       |
 
+Do not implement TRACE unless explicitly required. Disable it in production environments.
+
 ### Safety
 
 A safe method must not intentionally modify the server's resource state.
@@ -129,7 +131,7 @@ Do not assume every PATCH operation is non-idempotent or every POST operation mu
 
 ### PATCH style
 
-Unless the project already uses another style, use JSON Merge Patch (`application/merge-patch+json`) for PATCH requests. Document which PATCH style the API uses.
+When the API needs partial-update semantics and the project has no established convention, consider JSON Merge Patch (`application/merge-patch+json`) as the default. Use it only when its semantics fit the resource and update requirements. Document which PATCH format the API uses.
 
 ### Idempotency keys
 
@@ -161,14 +163,14 @@ Use meaningful HTTP status codes to communicate operation outcomes.
 ### Success
 
 - 200 OK: Successful request with a response body.
-- 201 Created: A resource was successfully created. Include a `Location` header pointing to the new resource.
+- 201 Created: A resource was successfully created. Include a Location header identifying the created resource when applicable.
 - 202 Accepted: Request accepted for asynchronous processing.
 - 204 No Content: Successful operation without a response body.
 
 ### Client errors
 
 - 400 Bad Request: Invalid request structure or malformed input.
-- 401 Unauthorized: Missing or invalid authentication.
+- 401 Unauthorized: Missing or invalid authentication. Include an appropriate `WWW-Authenticate` header when required by the authentication scheme.
 - 403 Forbidden: Authenticated client lacks permission.
 - 404 Not Found: Requested resource does not exist or is intentionally concealed.
 - 405 Method Not Allowed: HTTP method is unsupported for the resource.
@@ -330,16 +332,14 @@ Security must be considered during API design, not added as an afterthought.
 
 ### Additional security requirements
 
-- Validate and sanitize untrusted input.
+- Validate untrusted input and apply appropriate protections against injection and cross-site scripting.
 - Apply rate limiting where appropriate.
 - Enforce request body size limits.
 - Use HTTPS in production.
 - Configure CORS intentionally. CORS is a browser-enforced cross-origin access policy, not an authentication or authorization mechanism.
-- Protect against injection attacks.
 - Avoid exposing sensitive information in error responses.
 - Use secure pagination and filtering.
 - Apply appropriate security headers.
-- Disable the TRACE method in production.
 
 ## 9. API Versioning and Backward Compatibility
 
@@ -348,10 +348,13 @@ Design APIs with future evolution in mind.
 1. Avoid breaking existing consumers unnecessarily.
 2. Adding optional response fields is generally backward-compatible.
 3. Removing fields, renaming fields, or changing existing semantics can be breaking.
-4. Introduce versioning when a genuine breaking change requires it.
+4. Introduce a new version only when a genuine breaking change requires it.
 5. Use one consistent versioning strategy.
 6. Document deprecated endpoints and fields.
 7. Provide migration guidance where appropriate.
+8. For new APIs that require explicit versioning, establish a consistent versioning strategy from the first release (for example, `/api/v1/...`). Otherwise, avoid introducing versioning without a clear requirement.
+
+For an existing unversioned API, do not add a version to individual new endpoints. Follow the project's current scheme and flag versioning as a separate decision.
 
 Example:
 
@@ -395,8 +398,8 @@ Follow these conventions consistently across the API, subject to the Precedence 
 - Request body properties: camelCase.
 - Response body properties: camelCase.
 - JSON nested properties: camelCase.
-- Database tables: snake_case.
-- Database columns: snake_case.
+- Database tables: Follow existing database and ORM conventions; snake_case is a recommended default for new projects.
+- Database columns: Follow existing database and ORM conventions; snake_case is a recommended default for new projects.
 - TypeScript variables and functions: camelCase.
 - TypeScript classes and types: PascalCase.
 - Environment variables: SCREAMING_SNAKE_CASE.
@@ -425,7 +428,7 @@ Response:
 }
 ```
 
-Use kebab-case for URLs, camelCase for everything in JSON and query parameters, and snake_case for database identifiers.
+Use kebab-case for URLs, camelCase for application-defined JSON properties and query parameters, and follow the existing database naming convention for database identifiers.
 
 - Keep API naming conventions independent of database naming conventions.
 - Never mix naming conventions within the same API contract.
@@ -502,6 +505,9 @@ Cover:
 - Repeated POST requests behave according to their contract.
 - Idempotency key retries do not duplicate operations.
 - Idempotency key reuse with a different payload returns 422, and a concurrent in-flight duplicate returns 409.
+- Verify that 401 responses include the appropriate `WWW-Authenticate` header when required by the authentication scheme.
+- Verify that 201 responses include a correct `Location` header when applicable.
+- Verify that 204 responses do not include a response body.
 
 ### Security tests
 

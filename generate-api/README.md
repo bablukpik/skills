@@ -18,8 +18,6 @@ The skill is framework-agnostic. It does not add a new architecture or new libra
 
 ## Install
 
-Always install from GitHub, including while editing this skill. Push to `main` first.
-
 Into the current project, for every detected agent (Cursor, Claude Code, OpenCode, Codex, and any others installed):
 
 ```bash
